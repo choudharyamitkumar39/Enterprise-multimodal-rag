@@ -1,0 +1,17 @@
+# API Keys and Secrets
+.env
+
+# Python/Jupyter caches
+__pycache__/
+*.py[cod]
+*$py.class
+.ipynb_checkpoints/
+.pytest_cache/
+
+# VS Code settings
+.vscode/
+
+# Virtual Environments (just in case)
+venv/
+env/
+myenv/
