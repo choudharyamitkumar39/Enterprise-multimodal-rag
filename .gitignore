@@ -15,3 +15,7 @@ __pycache__/
 venv/
 env/
 myenv/
+
+# Legacy compatibility paths (tracked under data/extracted_images instead)
+novacore_extracted_images/
+notebooks/novacore_extracted_images/
