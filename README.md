@@ -187,11 +187,3 @@ Test live production queries with real-time feedback logging:
 python scripts/demo_online_evaluation.py
 ```
 
----
-
-## 💼 Resume-Ready Highlights
-
-* **Multimodal RAG Architecture**: Engineered an end-to-end multimodal RAG pipeline parsing enterprise PDFs into structured text, markdown tables, and visual artifacts, indexed into a unified Pinecone vector space.
-* **Dynamic Modality Routing**: Designed a routing mechanism dynamically selecting between Text LLMs and Vision LLMs (VLMs) based on semantic retrieval of visual evidence, ensuring high factual grounding for charts and diagrams.
-* **Production Observability with LangSmith**: Integrated LangSmith for distributed trace telemetry across multimodal runs, instrumenting custom vision inference graphs and tracking live latency and token costs.
-* **Dual-Layer LLM Evaluation (Offline & Online)**: Developed an offline RAG Triad benchmark (**5.0/5.0 Faithfulness, 100% Routing Accuracy**) and an asynchronous **Online Evaluator** streaming real-time hallucination and relevance feedback directly into LangSmith traces.
