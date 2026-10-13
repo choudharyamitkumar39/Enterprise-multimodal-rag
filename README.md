@@ -1,8 +1,8 @@
-# Enterprise Multimodal RAG & Evaluation Pipeline
+# Enterprise Multimodal RAG, LLM Evaluation & LangSmith Observability
 
-A complete, production-grade **Multimodal Retrieval-Augmented Generation (RAG)** pipeline and **LLM Evaluation Suite** built with **LangChain**, **Pinecone**, and **Groq (Text & Vision LLMs)**.
+A production-grade **Multimodal Retrieval-Augmented Generation (RAG)** pipeline, **Offline Benchmark Suite**, and **LangSmith Online Evaluation System** built with **LangChain**, **Pinecone**, and **Groq (Text & Vision LLMs)**.
 
-The system extracts narrative text, structured tables, and visual elements (charts, plots, diagrams) from complex enterprise PDF reports, creates unified multimodal embeddings, performs semantic vector search, and dynamically routes queries to specialized Text or Vision-Language Models (VLMs).
+The system extracts narrative text, structured tables, and visual artifacts (charts, pie graphs, process diagrams) from enterprise PDF reports, creates unified multimodal embeddings, performs semantic vector search, dynamically routes queries between Text LLMs and Vision-Language Models (VLMs), and provides real-time observability and hallucination detection via **LangSmith**.
 
 ---
 
@@ -10,9 +10,11 @@ The system extracts narrative text, structured tables, and visual elements (char
 
 ```text
 Multimodal RAG/
-├── .env                                  # API keys (Groq, Pinecone)
-├── .gitignore                            # Environment & secret protection
-├── README.md                             # Comprehensive documentation
+├── .env                                  # Private API keys (Groq, Pinecone, LangSmith)
+├── .env.example                          # Environment configuration template
+├── .gitignore                            # Secrets & local cache protection
+├── app.py                                # Streamlit Web UI (Upload PDFs, session memory, chat)
+├── README.md                             # Comprehensive project documentation
 ├── assets/                               # Architecture diagrams & evaluation charts
 │   ├── overview.png
 │   ├── ingestion_pipeline.png
@@ -20,16 +22,22 @@ Multimodal RAG/
 │   ├── end_to_end_architecture.png
 │   └── evaluation_benchmark.png          # Quantitative evaluation benchmark plot
 ├── data/
+│   ├── chat_sessions.json                # Persistent conversation history & session metadata
 │   ├── extracted_images/                 # High-resolution images extracted from PDFs
-│   └── raw/                              # Source PDF documents (NovaCore FY2026 report)
+│   └── raw/                              # Source PDF documents
 ├── docs/                                 # Conceptual slides & presentations
 ├── notebooks/
-│   ├── Build_Multimodal_RAG_NovaCore.ipynb # Main ingestion, vector indexing & demo notebook
-│   └── Evaluate_Multimodal_RAG.ipynb     # Interactive LLM Evaluation & Benchmarking notebook
-└── src/                                  # Modular, reusable production code
+│   ├── Build_Multimodal_RAG_NovaCore.ipynb # Ingestion, vector indexing & demo notebook
+│   └── Evaluate_Multimodal_RAG.ipynb     # Offline benchmark & LangSmith online evaluation notebook
+├── scripts/
+│   └── demo_online_evaluation.py         # CLI demo for live production tracing & online feedback
+└── src/                                  # Modular production codebase
     ├── __init__.py
-    ├── rag_pipeline.py                   # MultimodalRAGPipeline class (Pinecone + Groq + LangChain)
-    └── evaluator.py                      # MultimodalRAGEvaluator & Golden Test Benchmark suite
+    ├── chat_storage.py                   # Chat session storage & history manager
+    ├── evaluator.py                      # Offline RAG Triad Evaluator & Golden Benchmark suite
+    ├── online_evaluator.py               # LangSmith Online Evaluator (Async feedback hooks)
+    ├── pdf_processor.py                  # Dynamic PDF parser (text, tables, vision summarizer)
+    └── rag_pipeline.py                   # MultimodalRAGPipeline class (Pinecone + Groq + LangSmith)
 ```
 
 ---
@@ -60,9 +68,39 @@ At query time, the system performs cosine semantic search across all modalities 
 
 ---
 
-## 🧪 Comprehensive LLM Evaluation & Benchmarking Suite
+## 📡 Production Observability & Online Evaluation with LangSmith
 
-In production AI systems, **evaluation is essential**. This project implements an industry-grade evaluation framework combining the **RAG Triad** (Faithfulness, Relevance, Context Precision) with specialized **Multimodal Routing Verification**.
+In real-world deployments, testing on static benchmarks isn't enough. This pipeline integrates **LangSmith** for end-to-end production observability and **real-time online evaluation**.
+
+```text
+User Question
+      │
+      ▼
+[Multimodal RAG Pipeline] ──(Stream Traces)──► [LangSmith Dashboard]
+      │                                                ▲
+      ▼                                                │  (Logs Feedback)
+[Generated Answer] ──► [Async Online Judge] ───────────┘
+                       (Faithfulness & Relevance)
+```
+
+### 1. Full-Graph Execution Tracing
+* Decorated with `@traceable`, every query logs its full execution graph to LangSmith.
+* Captures user input, retrieved Pinecone documents, visual metadata payload, token consumption, and response latency.
+* Distinct nested runs for `retriever`, `text_rag_chain`, and `multimodal_vision_inference`.
+
+### 2. Asynchronous Online Evaluator (`src/online_evaluator.py`)
+* Automatically triggers an **LLM-as-a-Judge** worker in a non-blocking background thread whenever a live query executes.
+* Inspects the live interaction for hallucination risk against the retrieved context.
+* Attaches structured feedback directly onto the LangSmith trace:
+  * **`faithfulness`**: Score (0.0 to 1.0) measuring context grounding and absence of hallucination.
+  * **`answer_relevance`**: Score (0.0 to 1.0) evaluating how directly the response answered the user's intent.
+  * **`modality_routing`**: Records whether the query was handled via the Text LLM or Vision LLM.
+
+---
+
+## 🧪 Quantitative Offline Evaluation Suite
+
+This project pairs online observability with an automated offline evaluation suite based on the **RAG Triad** principles.
 
 ![Evaluation Benchmark](assets/evaluation_benchmark.png)
 
@@ -78,7 +116,7 @@ In production AI systems, **evaluation is essential**. This project implements a
 
 ---
 
-### 📊 Benchmark Results
+### 📊 Offline Benchmark Results
 
 Evaluated across a curated golden test set spanning **Text**, **Structured Tables**, **Charts**, **Process Diagrams**, and **Cross-Modal Synthesis**:
 
@@ -91,16 +129,12 @@ Evaluated across a curated golden test set spanning **Text**, **Structured Table
 | **Cross-Modal Hybrid** | **100%** | **100%** | **5.0 / 5.0** | **5.0 / 5.0** | **100%** |
 | **OVERALL AGGREGATE** | **100%** | **100%** | **5.00 / 5.0** | **4.78 / 5.0** | **100%** |
 
-#### Key Evaluation Findings:
-* **Zero Hallucinations (5.0 / 5.0 Faithfulness)**: Strict context boundaries and vision summarization prevented the LLM from inventing metrics not found in the original enterprise report.
-* **100% Modality Routing Accuracy**: Visual questions (line graphs, pie charts, supply-chain flow diagrams) correctly triggered the Vision LLM pipeline with high-resolution images attached.
-* **Co-Located Modality Spillover**: For pages containing both tables and charts (e.g., Regional Operations on Page 4), vector search retrieves both representations, allowing the system to verify numbers across modalities.
-
 ---
 
 ## 🛠️ Tech Stack & Implementation Details
 
 * **Orchestration**: `LangChain` (Chains, PromptTemplates, OutputParsers)
+* **Production Observability**: `LangSmith` (Traces, Run Trees, Real-time Online Feedback)
 * **Vector Database**: `Pinecone` (Serverless Index, Cosine Similarity, Namespace Isolation)
 * **Embedding Model**: `sentence-transformers/all-MiniLM-L6-v2` (HuggingFace, 384 dims)
 * **Text LLM**: `openai/gpt-oss-20b` (Served via Groq API)
@@ -115,30 +149,42 @@ Evaluated across a curated golden test set spanning **Text**, **Structured Table
 ### 1. Environment Configuration
 Create a `.env` file in the project root:
 ```env
+# Groq & Pinecone Keys
 GROQ_API_KEY=your_groq_api_key_here
 PINECONE_API_KEY=your_pinecone_api_key_here
+
+# LangSmith Observability & Online Evaluation (Optional but recommended)
+LANGCHAIN_TRACING_V2=true
+LANGCHAIN_ENDPOINT=https://api.smith.langchain.com
+LANGCHAIN_API_KEY=your_langsmith_api_key_here
+LANGCHAIN_PROJECT=multimodal-rag-production
 ```
 
-### 2. Run the Main Ingestion & Demo Notebook
+### 2. Launch the Web Interface (Streamlit App)
+Start the interactive chat UI with document upload, session history, and multimodal evidence inspection:
+```bash
+streamlit run app.py
+```
+*(Your browser will automatically open `http://localhost:8501`)*
+
+### 3. Ingestion & RAG Pipeline Demo (Jupyter)
 Open and run all cells in:
 ```text
 notebooks/Build_Multimodal_RAG_NovaCore.ipynb
 ```
-*(This parses the PDF, extracts images, generates vision summaries, populates the Pinecone index, and runs interactive demo queries).*
 
-### 3. Run the Evaluation Suite
-You can run the evaluation in two ways:
+### 4. Run Offline Evaluation & Benchmarks
+Execute the offline benchmark suite:
+* **Interactive Notebook**: Open [`notebooks/Evaluate_Multimodal_RAG.ipynb`](notebooks/Evaluate_Multimodal_RAG.ipynb).
+* **CLI Command**:
+  ```bash
+  python src/evaluator.py
+  ```
 
-**Option A — Interactive Notebook**:
-Open and execute:
-```text
-notebooks/Evaluate_Multimodal_RAG.ipynb
-```
-
-**Option B — Command-Line Interface (CLI)**:
-Run the evaluator script directly:
+### 5. Run Live Online Evaluation & LangSmith Demo
+Test live production queries with real-time feedback logging:
 ```bash
-python src/evaluator.py
+python scripts/demo_online_evaluation.py
 ```
 
 ---
@@ -147,4 +193,5 @@ python src/evaluator.py
 
 * **Multimodal RAG Architecture**: Engineered an end-to-end multimodal RAG pipeline parsing enterprise PDFs into structured text, markdown tables, and visual artifacts, indexed into a unified Pinecone vector space.
 * **Dynamic Modality Routing**: Designed a routing mechanism dynamically selecting between Text LLMs and Vision LLMs (VLMs) based on semantic retrieval of visual evidence, ensuring high factual grounding for charts and diagrams.
-* **Rigorous LLM Evaluation**: Developed an automated LLM evaluation framework using the RAG Triad (Faithfulness, Answer Relevance, Context Precision) and LLM-as-a-Judge scoring, achieving **5.0/5.0 Faithfulness (0% hallucination rate)** and **100% Modality Routing Accuracy**.
+* **Production Observability with LangSmith**: Integrated LangSmith for distributed trace telemetry across multimodal runs, instrumenting custom vision inference graphs and tracking live latency and token costs.
+* **Dual-Layer LLM Evaluation (Offline & Online)**: Developed an offline RAG Triad benchmark (**5.0/5.0 Faithfulness, 100% Routing Accuracy**) and an asynchronous **Online Evaluator** streaming real-time hallucination and relevance feedback directly into LangSmith traces.

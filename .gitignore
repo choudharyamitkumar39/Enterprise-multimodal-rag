@@ -19,3 +19,9 @@ myenv/
 # Legacy compatibility paths (tracked under data/extracted_images instead)
 novacore_extracted_images/
 notebooks/novacore_extracted_images/
+
+# Dynamic user uploads and local chat session history
+data/raw/*
+!data/raw/NovaCore_Multimodal_Company_Report_2026.pdf
+data/extracted_images/chat-*
+data/chat_sessions.json

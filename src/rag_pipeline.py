@@ -1,7 +1,10 @@
 import os
 import io
+import sys
 import base64
+import logging
 from pathlib import Path
+from typing import Optional, List, Dict, Any
 from PIL import Image
 from dotenv import load_dotenv
 
@@ -12,6 +15,29 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_groq import ChatGroq
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_pinecone import PineconeVectorStore
+
+logger = logging.getLogger("rag_pipeline")
+
+# LangSmith tracing helpers
+try:
+    from langsmith import traceable
+    from langsmith.run_helpers import get_current_run_tree
+    LANGSMITH_AVAILABLE = True
+except ImportError:
+    LANGSMITH_AVAILABLE = False
+    def traceable(*args, **kwargs):
+        def decorator(f):
+            return f
+        return decorator
+    def get_current_run_tree():
+        return None
+
+# Import Online Evaluator
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+try:
+    from .online_evaluator import LangSmithOnlineEvaluator
+except (ImportError, ValueError):
+    from online_evaluator import LangSmithOnlineEvaluator
 
 
 def find_env_file():
@@ -73,16 +99,20 @@ def format_context(retrieved_docs):
 
 
 class MultimodalRAGPipeline:
-    """End-to-end Multimodal RAG pipeline with Pinecone and Groq."""
+    """
+    End-to-end Multimodal RAG pipeline with Pinecone vector retrieval,
+    Groq LLMs, LangSmith tracing, and real-time online evaluation.
+    """
 
     def __init__(
         self,
-        text_model="openai/gpt-oss-20b",
-        vision_model="qwen/qwen3.8-27b",
-        embedding_model="sentence-transformers/all-MiniLM-L6-v2",
-        index_name="novacore-multimodal-rag",
-        namespace="fy2026-demo",
-        top_k=5,
+        text_model: str = "openai/gpt-oss-20b",
+        vision_model: str = "qwen/qwen3.8-27b",
+        embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2",
+        index_name: str = "novacore-multimodal-rag",
+        namespace: str = "fy2026-demo",
+        top_k: int = 5,
+        enable_online_eval: bool = True,
     ):
         env_file = find_env_file()
         if env_file:
@@ -101,6 +131,24 @@ class MultimodalRAGPipeline:
         self.index_name = index_name
         self.namespace = namespace
         self.top_k = top_k
+        self.enable_online_eval = enable_online_eval
+
+        # Validate LangSmith API key to avoid 403 Forbidden warnings on placeholder keys
+        ls_key = os.getenv("LANGCHAIN_API_KEY") or os.getenv("LANGSMITH_API_KEY") or ""
+        if not ls_key or ls_key.startswith("your_") or "placeholder" in ls_key.lower():
+            os.environ["LANGCHAIN_TRACING_V2"] = "false"
+            os.environ["LANGSMITH_TRACING"] = "false"
+        else:
+            os.environ["LANGCHAIN_TRACING_V2"] = "true"
+            os.environ["LANGSMITH_TRACING"] = "true"
+            os.environ["LANGCHAIN_API_KEY"] = ls_key
+            os.environ["LANGSMITH_API_KEY"] = ls_key
+            proj = os.getenv("LANGCHAIN_PROJECT") or os.getenv("LANGSMITH_PROJECT") or "multimodal-rag-pipeline-local"
+            os.environ["LANGCHAIN_PROJECT"] = proj
+            os.environ["LANGSMITH_PROJECT"] = proj
+            # Remove conflicting agent address variables if present
+            os.environ.pop("LANGSMITH_AGENT_ID", None)
+            os.environ.pop("LANGSMITH_AGENT_ENVIRONMENT", None)
 
         # Initialize clients
         self.groq_client = Groq(api_key=os.environ["GROQ_API_KEY"])
@@ -119,8 +167,7 @@ class MultimodalRAGPipeline:
         self.text_llm = ChatGroq(model=self.text_model, temperature=0)
         self.rag_prompt = ChatPromptTemplate.from_template(
             """
-You are a helpful assistant answering questions about the
-NovaCore Systems FY2026 company report.
+You are a helpful assistant answering questions about the provided document.
 
 Use ONLY the retrieved context below.
 
@@ -129,6 +176,7 @@ If the answer is not available in the context, say:
 
 Mention page numbers when possible.
 
+{chat_history_block}
 CONTEXT:
 {context}
 
@@ -140,17 +188,31 @@ ANSWER:
         )
         self.text_rag_chain = self.rag_prompt | self.text_llm | StrOutputParser()
 
-    def answer_with_vision(self, question, context, image_paths):
+        # Online Evaluator instance (LangSmith)
+        self.online_evaluator = LangSmithOnlineEvaluator(
+            judge_model=self.text_model,
+            groq_client=self.groq_client,
+        )
+
+    @traceable(name="multimodal_vision_inference", run_type="llm")
+    def answer_with_vision(
+        self,
+        question: str,
+        context: str,
+        image_paths: List[str],
+        chat_history_block: str = "",
+    ) -> str:
         """Generates answer using Groq Vision model and retrieved images."""
         valid_paths = [p for p in image_paths if p and Path(p).exists()][:3]
         content = [
             {
                 "type": "text",
                 "text": f"""
-You are answering questions about the NovaCore Systems FY2026 report.
+You are answering questions about the provided document.
 
 Use ONLY the retrieved context and the attached retrieved visuals.
 
+{chat_history_block}
 RETRIEVED CONTEXT:
 {context}
 
@@ -180,16 +242,49 @@ Instructions:
         )
         return response.choices[0].message.content.strip()
 
-    def query(self, question, top_k=None):
-        """Execute a full multimodal RAG query and return structured results."""
+    @traceable(name="multimodal_rag_pipeline", run_type="chain")
+    def query(
+        self,
+        question: str,
+        top_k: Optional[int] = None,
+        namespace: Optional[str] = None,
+        chat_history: Optional[List[Dict[str, str]]] = None,
+        online_eval: Optional[bool] = None,
+    ) -> Dict[str, Any]:
+        """
+        Executes a full multimodal RAG query, records LangSmith traces,
+        and automatically triggers real-time online evaluation.
+        """
+        # Capture current LangSmith run ID if tracing
+        run_tree = get_current_run_tree()
+        run_id = str(run_tree.id) if run_tree else None
+
         effective_k = top_k or self.top_k
-        if effective_k != self.top_k:
-            retriever = self.vectorstore.as_retriever(search_kwargs={"k": effective_k})
+        target_namespace = namespace or self.namespace
+
+        # Use target namespace retriever
+        if target_namespace != self.namespace or effective_k != self.top_k:
+            vs = PineconeVectorStore(
+                index_name=self.index_name,
+                embedding=self.embeddings,
+                namespace=target_namespace,
+            )
+            retriever = vs.as_retriever(search_kwargs={"k": effective_k})
             retrieved_docs = retriever.invoke(question)
         else:
             retrieved_docs = self.retriever.invoke(question)
 
         context = format_context(retrieved_docs)
+
+        # Format conversation history
+        chat_history_block = ""
+        if chat_history:
+            recent_turns = chat_history[-4:]
+            formatted = []
+            for m in recent_turns:
+                role = "User" if m.get("role") == "user" else "Assistant"
+                formatted.append(f"{role}: {m.get('content', '')}")
+            chat_history_block = "PREVIOUS CONVERSATION:\n" + "\n".join(formatted) + "\n\n"
 
         # Check for visual modality
         image_paths = []
@@ -207,11 +302,29 @@ Instructions:
                 question=question,
                 context=context,
                 image_paths=image_paths,
+                chat_history_block=chat_history_block,
             )
         else:
             routed_to = "text"
             answer = self.text_rag_chain.invoke(
-                {"context": context, "question": question}
+                {
+                    "context": context,
+                    "question": question,
+                    "chat_history_block": chat_history_block,
+                }
+            )
+
+        # Online evaluation trigger (Async by default)
+        do_eval = self.enable_online_eval if online_eval is None else online_eval
+        eval_dispatch = None
+        if do_eval and self.online_evaluator:
+            eval_dispatch = self.online_evaluator.evaluate_run(
+                run_id=run_id,
+                question=question,
+                answer=answer,
+                context=context,
+                routed_to=routed_to,
+                background=True,
             )
 
         return {
@@ -223,4 +336,6 @@ Instructions:
             "context": context,
             "retrieved_modalities": [doc.metadata.get("modality") for doc in retrieved_docs],
             "retrieved_pages": [int(doc.metadata.get("page", 0)) for doc in retrieved_docs],
+            "run_id": run_id,
+            "online_eval": eval_dispatch,
         }
