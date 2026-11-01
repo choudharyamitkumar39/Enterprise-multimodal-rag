@@ -32,18 +32,22 @@ except ImportError:
     def get_current_run_tree():
         return None
 
-# Import Online Evaluator, Cache Manager, Hybrid Retriever, and Agentic Router
+# Import Online Evaluator, Cache Manager, Hybrid Retriever, Agentic Router, Streaming Guardrails, and Multi-Doc Analyzer
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 try:
     from .online_evaluator import LangSmithOnlineEvaluator
     from .cache_manager import SemanticCacheManager
     from .hybrid_retriever import HybridRerankRetriever
     from .agentic_router import AgenticSelfRAG
+    from .streaming_guardrails import StreamingGuardrailInterceptor
+    from .multi_doc_analyzer import MultiDocComparator
 except (ImportError, ValueError):
     from online_evaluator import LangSmithOnlineEvaluator
     from cache_manager import SemanticCacheManager
     from hybrid_retriever import HybridRerankRetriever
     from agentic_router import AgenticSelfRAG
+    from streaming_guardrails import StreamingGuardrailInterceptor
+    from multi_doc_analyzer import MultiDocComparator
 
 
 def find_env_file():
@@ -217,6 +221,13 @@ ANSWER:
 
         # 3. Agentic Self-RAG (Query rewrite, sufficiency grader, self-correction)
         self.agentic_rag = AgenticSelfRAG(
+            groq_client=self.groq_client,
+            model=self.text_model,
+        )
+
+        # 4. Multi-Document Comparative Analyzer
+        self.multi_doc_comparator = MultiDocComparator(
+            pipeline=self,
             groq_client=self.groq_client,
             model=self.text_model,
         )
@@ -435,3 +446,131 @@ Instructions:
             )
 
         return result_payload
+
+    def stream_query(
+        self,
+        question: str,
+        top_k: Optional[int] = None,
+        namespace: Optional[str] = None,
+        chat_history: Optional[List[Dict[str, str]]] = None,
+        enable_cache: bool = True,
+        enable_agentic_loop: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        Executes hybrid retrieval, sufficiency grading, and streams the answer
+        through a real-time sliding-window safety guardrail interceptor.
+        
+        Returns:
+            {
+                "stream_generator": Generator yielding tokens,
+                "retrieved_docs": list,
+                "image_paths": list,
+                "routed_to": str,
+                "from_cache": bool,
+                "retrieved_pages": list
+            }
+        """
+        effective_k = top_k or self.top_k
+        target_namespace = namespace or self.namespace
+
+        # 1. GPTCache Check
+        if enable_cache and hasattr(self, "cache_manager"):
+            cached_res = self.cache_manager.check_cache(question, namespace=target_namespace)
+            if cached_res:
+                def cached_stream():
+                    cached_text = cached_res.get("answer", "")
+                    words = cached_text.split(" ")
+                    for i, w in enumerate(words):
+                        yield w + (" " if i < len(words) - 1 else "")
+                
+                cached_res["stream_generator"] = cached_stream()
+                return cached_res
+
+        # 2. Conversation memory block
+        chat_history_block = ""
+        if chat_history:
+            recent_turns = chat_history[-4:]
+            formatted = []
+            for m in recent_turns:
+                role = "User" if m.get("role") == "user" else "Assistant"
+                formatted.append(f"{role}: {m.get('content', '')}")
+            chat_history_block = "PREVIOUS CONVERSATION:\n" + "\n".join(formatted) + "\n\n"
+
+        # 3. Agentic Query Optimization
+        search_query = question
+        if enable_agentic_loop and hasattr(self, "agentic_rag") and chat_history:
+            search_query = self.agentic_rag.rewrite_query_for_retrieval(question, chat_history_block)
+
+        # 4. Hybrid Retrieval
+        if hasattr(self, "hybrid_retriever"):
+            retrieved_docs = self.hybrid_retriever.hybrid_search(
+                query=search_query,
+                k=effective_k,
+                namespace=target_namespace,
+            )
+        else:
+            retrieved_docs = self.retriever.invoke(search_query)
+
+        context = format_context(retrieved_docs)
+
+        # 5. Check visual evidence
+        image_paths = []
+        for doc in retrieved_docs:
+            if doc.metadata.get("modality") == "visual":
+                raw_path = doc.metadata.get("image_path")
+                resolved = resolve_image_path(raw_path)
+                if resolved and resolved not in image_paths:
+                    image_paths.append(resolved)
+
+        routed_to = "visual" if image_paths else "text"
+
+        # 6. Build Raw Upstream Token Stream
+        if routed_to == "visual":
+            valid_paths = [p for p in image_paths if p and Path(p).exists()][:1]
+            content = [
+                {
+                    "type": "text",
+                    "text": f"Use ONLY this retrieved context and image to answer.\n{chat_history_block}\nCONTEXT:\n{context}\n\nQUESTION: {question}\n\nANSWER:",
+                }
+            ]
+            for p in valid_paths:
+                content.append({
+                    "type": "image_url",
+                    "image_url": {"url": image_to_data_uri(p)},
+                })
+            raw_response = self.groq_client.chat.completions.create(
+                model=self.vision_model,
+                messages=[{"role": "user", "content": content}],
+                temperature=0,
+                max_completion_tokens=900,
+                stream=True,
+            )
+        else:
+            prompt_content = f"You are a helpful document assistant. Answer using ONLY the retrieved context. Mention page numbers.\n\n{chat_history_block}CONTEXT:\n{context}\n\nQUESTION: {question}\n\nANSWER:"
+            raw_response = self.groq_client.chat.completions.create(
+                model=self.text_model,
+                messages=[{"role": "user", "content": prompt_content}],
+                temperature=0,
+                max_completion_tokens=900,
+                stream=True,
+            )
+
+        def raw_token_generator():
+            for chunk in raw_response:
+                if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
+                    yield chunk.choices[0].delta.content
+
+        # 7. Wrap with Sliding-Window Guardrail Interceptor
+        interceptor = StreamingGuardrailInterceptor(buffer_size=6)
+        guarded_stream = interceptor.intercept_stream(raw_token_generator())
+
+        return {
+            "stream_generator": guarded_stream,
+            "retrieved_docs": retrieved_docs,
+            "image_paths": image_paths,
+            "routed_to": routed_to,
+            "context": context,
+            "retrieved_modalities": [doc.metadata.get("modality") for doc in retrieved_docs],
+            "retrieved_pages": [int(doc.metadata.get("page", 0)) for doc in retrieved_docs],
+            "from_cache": False,
+        }

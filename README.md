@@ -51,9 +51,11 @@ Multimodal RAG/
     ├── chat_storage.py                   # Chat session storage & history manager
     ├── evaluator.py                      # Baseline RAG Triad Evaluator
     ├── hybrid_retriever.py               # Hybrid Search (Dense + BM25) & Reciprocal Rank Fusion
+    ├── multi_doc_analyzer.py             # Multi-Document Cross-Analysis & Comparative Synthesis
     ├── online_evaluator.py               # LangSmith Online Evaluator (Async feedback hooks)
     ├── pdf_processor.py                  # Dynamic PDF parser (text, tables, bbox, vision summarizer)
     ├── rag_pipeline.py                   # MultimodalRAGPipeline class (Pinecone + Groq + LangSmith)
+    ├── streaming_guardrails.py           # Real-Time Token Streaming & Sliding-Window Circuit Breaker
     └── visualizer.py                     # Translucent page highlighter for verified citations
 ```
 
@@ -107,6 +109,16 @@ To demonstrate production engineering beyond naive linear RAG, the system implem
 ### 4. Click-to-Highlight PDF Grounding (Auditability)
 * Extracts exact bounding box coordinates `[x0, y0, x1, y1]` during document parsing.
 * In the Streamlit UI, each citation includes a **“🔍 Audit Highlighted Page”** popover that renders the actual PDF page with the exact source passage highlighted in translucent yellow.
+
+### 5. Multi-Document Cross-Analysis & Comparative Synthesis
+* **Query Decomposition**: Splits complex comparative prompts into targeted sub-queries per document.
+* **Parallel Multi-Namespace Retrieval**: Uses concurrent worker pools to fetch evidence from multiple Pinecone document namespaces simultaneously with zero latency penalty.
+* **Structured Comparison Matrices**: Generates executive takeaways, side-by-side Markdown comparison tables, and dual-document citations (e.g., `[Doc A: Page 2]` vs `[Doc B: Page 4]`).
+
+### 6. Token-by-Token Streaming with Real-Time Intercept Guardrails
+* Streams tokens live to the Streamlit UI (`st.write_stream`) for a snappy, ChatGPT-grade user experience.
+* **Sliding-Window Safety Buffer**: Intercepts tokens 6–8 chunks ahead of rendering, continuously scanning for credential leaks (`gsk_`, `pcsk_`, `lsv2_`), prompt injections, and PII.
+* **Emergency Circuit Breaker**: If any safety violation is detected, instantly severs the upstream LLM connection, purges the buffer, and yields an enterprise safety refusal notice.
 
 ---
 

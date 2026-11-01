@@ -165,6 +165,28 @@ with st.sidebar:
             st.caption(f"• **Latency Saved**: {stats['Latency Saved']}")
             st.caption(f"• **Cost Saved**: {stats['Estimated Cost Saved']}")
 
+    st.markdown("---")
+    # Multi-Document Cross-Analysis Selector
+    st.markdown("#### 📑 Comparative Intelligence")
+    multi_doc_mode = st.toggle("Cross-Document Compare Mode", value=False)
+    selected_docs_for_compare = []
+    if multi_doc_mode:
+        all_indexed_docs = {}
+        for s_id, s_info in load_all_sessions().items():
+            if s_info.get("pdf_name"):
+                all_indexed_docs[s_info["pdf_name"]] = s_info.get("namespace", f"chat-{s_id}")
+
+        doc_options = list(all_indexed_docs.keys())
+        if len(doc_options) >= 2:
+            chosen = st.multiselect(
+                "Select documents to compare:",
+                options=doc_options,
+                default=doc_options[:2],
+            )
+            selected_docs_for_compare = [{"name": name, "namespace": all_indexed_docs[name]} for name in chosen]
+        else:
+            st.info("Upload at least 2 PDFs across chats to unlock side-by-side comparative analysis.")
+
 
 # -------------------------------------------------------------
 # MAIN WINDOW
@@ -282,22 +304,56 @@ if pdf_name:
         with st.chat_message("user"):
             st.markdown(user_input)
 
-        # 2. Query Multimodal RAG pipeline
+        # 2. Query Multimodal RAG pipeline (Streaming or Multi-Doc Mode)
         with st.chat_message("assistant"):
-            with st.spinner("Analyzing document across text, tables, and visuals..."):
-                query_result = pipeline.query(
-                    question=user_input,
-                    namespace=namespace,
-                    chat_history=messages[:-1],  # pass conversation memory
-                    online_eval=True,
-                )
+            # A. Multi-Document Comparative Mode
+            if multi_doc_mode and len(selected_docs_for_compare) >= 2:
+                with st.spinner("Executing parallel multi-namespace retrieval & cross-document synthesis..."):
+                    doc_names = [d["name"] for d in selected_docs_for_compare]
+                    doc_contexts = pipeline.multi_doc_comparator.parallel_retrieve(
+                        doc_targets=selected_docs_for_compare,
+                        query=user_input,
+                        k=3,
+                    )
+                    answer_text = pipeline.multi_doc_comparator.comparative_synthesis(
+                        question=user_input,
+                        doc_contexts=doc_contexts,
+                    )
+                    st.markdown(answer_text)
+                    routed_to = "multi_doc_comparative"
+                    image_paths = []
+                    sources_meta = []
+                    for d_name, d_list in doc_contexts.items():
+                        for doc in d_list:
+                            sources_meta.append({
+                                "doc_name": d_name,
+                                "page": doc.metadata.get("page"),
+                                "modality": doc.metadata.get("modality"),
+                                "snippet": doc.page_content[:150],
+                            })
+                    with st.expander("📑 Cross-Document Retrieved Evidence Chunks", expanded=False):
+                        for s in sources_meta:
+                            st.caption(f"• **{s.get('doc_name')}** | Page {s.get('page')} | {str(s.get('modality', '')).upper()}")
 
-                answer_text = query_result["answer"]
-                routed_to = query_result["routed_to"]
-                image_paths = query_result.get("image_paths", [])
-                retrieved_docs = query_result.get("retrieved_docs", [])
+            # B. Standard Single-Doc Mode with Real-Time Token Streaming & Safety Guardrails
+            else:
+                with st.spinner("Analyzing document across text, tables, and visuals..."):
+                    stream_res = pipeline.stream_query(
+                        question=user_input,
+                        namespace=namespace,
+                        chat_history=messages[:-1],
+                        enable_cache=True,
+                        enable_agentic_loop=True,
+                    )
 
-                st.markdown(answer_text)
+                # Render token-by-token stream live to UI with real-time guardrail interception
+                stream_placeholder = st.empty()
+                stream_generator = stream_res["stream_generator"]
+                answer_text = stream_placeholder.write_stream(stream_generator)
+
+                routed_to = stream_res.get("routed_to", "text")
+                image_paths = stream_res.get("image_paths", [])
+                retrieved_docs = stream_res.get("retrieved_docs", [])
 
                 # Show retrieved images
                 if image_paths:
