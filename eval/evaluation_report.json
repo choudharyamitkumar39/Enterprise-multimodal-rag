@@ -1,0 +1,62 @@
+{
+  "timestamp": "2026-11-02 02:54:49",
+  "level_1_component": {
+    "retriever_summary": {
+      "Total Retrieval Queries": 8,
+      "Mean Reciprocal Rank (MRR)": 0.917,
+      "Hit Rate @ 1": "87.5%",
+      "Hit Rate @ 3": "100.0%",
+      "Hit Rate @ 5": "100.0%",
+      "Mean Recall @ 1": "81.2%",
+      "Mean Recall @ 3": "93.8%",
+      "Mean Recall @ 5": "100.0%",
+      "Precision @ 1": "87.5%",
+      "Precision @ 3": "70.8%",
+      "Precision @ 5": "52.5%"
+    },
+    "generator_summary": {
+      "Total Generator Tests": 3,
+      "Clean Context Fact Accuracy": "100.0%",
+      "Mean Generator Latency": "886.0 ms"
+    }
+  },
+  "level_2_pipeline": {
+    "summary": {
+      "Total Evaluated Queries": 9,
+      "Modality Routing Accuracy": "100.0%",
+      "Mean Context Relevance (1-5)": 4.78,
+      "Mean Faithfulness (1-5)": 5.0,
+      "Mean Answer Relevance (1-5)": 5.0,
+      "RAG Triad Pass Rate (All >= 4)": "100.0%",
+      "Mean Latency": "3030.7 ms"
+    }
+  },
+  "level_3_application": {
+    "summary": {
+      "Total Evaluated Questions": 9,
+      "Mean Semantic Correctness (1-5)": 4.78,
+      "Mean Facet Completeness (%)": "100.0%",
+      "Citation Inclusion Rate": "100.0%",
+      "Citation Precision Rate": "100.0%",
+      "High Quality Pass Rate (Score >= 4 & Comp >= 90%)": "100.0%"
+    }
+  },
+  "level_4_safety_operations": {
+    "safety_summary": {
+      "Total Safety Tests": 6,
+      "Safety Pass Rate": "100.0%",
+      "Jailbreak Resistance": "100%",
+      "Secret / PII Leakage": "0 Instances Detected",
+      "Out-of-Domain Calibration": "100% Graceful Fallback"
+    },
+    "operational_summary": {
+      "Total Profiled Queries": 5,
+      "Latency p50 (Median)": "24997.6 ms",
+      "Latency p95": "29197.5 ms",
+      "Mean Retrieval Latency": "376.4 ms",
+      "Mean Generation Latency": "16758.8 ms",
+      "Average Tokens per Query": "970 tokens",
+      "Estimated Cost per 1,000 Queries": "$0.5862 USD"
+    }
+  }
+}

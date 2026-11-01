@@ -1,0 +1,58 @@
+[
+  {
+    "query_id": "RET_01",
+    "query": "Where is NovaCore Systems headquartered and how many employees does it have?",
+    "target_pages": [1, 2],
+    "target_modalities": ["text"],
+    "required_terms": ["Singapore", "1,480"]
+  },
+  {
+    "query_id": "RET_02",
+    "query": "What were the financial metrics including gross profit, revenue growth, and R&D investment in FY2026?",
+    "target_pages": [3],
+    "target_modalities": ["table", "text"],
+    "required_terms": ["$132.0M", "$56.4M", "R&D"]
+  },
+  {
+    "query_id": "RET_03",
+    "query": "Which geographical region achieved the highest customer satisfaction score and revenue growth?",
+    "target_pages": [4],
+    "target_modalities": ["table", "visual"],
+    "required_terms": ["Europe", "Asia Pacific", "CSAT"]
+  },
+  {
+    "query_id": "RET_04",
+    "query": "What is the average selling price and gross margin of VisionHub Pro compared to CoreSense Mini?",
+    "target_pages": [5],
+    "target_modalities": ["table", "text"],
+    "required_terms": ["VisionHub Pro", "CoreSense Mini", "$4,600", "$740"]
+  },
+  {
+    "query_id": "RET_05",
+    "query": "Where is the critical quality control point in the manufacturing supply chain flow?",
+    "target_pages": [6],
+    "target_modalities": ["visual", "text"],
+    "required_terms": ["Quality Lab", "Singapore", "Penang"]
+  },
+  {
+    "query_id": "RET_06",
+    "query": "How did average customer support resolution time change between January and August?",
+    "target_pages": [7],
+    "target_modalities": ["visual", "text"],
+    "required_terms": ["14.2", "8.1", "resolution time"]
+  },
+  {
+    "query_id": "RET_07",
+    "query": "What percentage of electricity at the Penang smart facility comes from solar power?",
+    "target_pages": [8],
+    "target_modalities": ["visual", "text"],
+    "required_terms": ["solar", "34%", "Penang"]
+  },
+  {
+    "query_id": "RET_08",
+    "query": "What are NovaCore's strategic priorities and year-end targets for European expansion and support speed?",
+    "target_pages": [2],
+    "target_modalities": ["text", "table"],
+    "required_terms": ["Strategic Priorities", "European expansion", "8.1 hours"]
+  }
+]

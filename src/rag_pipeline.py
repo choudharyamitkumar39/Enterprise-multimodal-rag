@@ -78,12 +78,12 @@ def resolve_image_path(raw_path):
 
 
 def image_to_data_uri(image_path):
-    """Encodes an image to a base64 JPEG data URI."""
+    """Encodes an image to an optimized base64 JPEG data URI."""
     with Image.open(image_path) as img:
         img = img.convert("RGB")
-        img.thumbnail((1600, 1600))
+        img.thumbnail((768, 768))
         buffer = io.BytesIO()
-        img.save(buffer, format="JPEG", quality=85)
+        img.save(buffer, format="JPEG", quality=80)
     encoded = base64.b64encode(buffer.getvalue()).decode("utf-8")
     return f"data:image/jpeg;base64,{encoded}"
 
@@ -202,8 +202,14 @@ ANSWER:
         image_paths: List[str],
         chat_history_block: str = "",
     ) -> str:
-        """Generates answer using Groq Vision model and retrieved images."""
-        valid_paths = [p for p in image_paths if p and Path(p).exists()][:3]
+        """Generates answer using Groq Vision model and retrieved images with fallback."""
+        # Deduplicate paths while preserving retrieval rank, take primary image
+        unique_paths = []
+        for p in image_paths:
+            if p and Path(p).exists() and p not in unique_paths:
+                unique_paths.append(p)
+        valid_paths = unique_paths[:1]
+
         content = [
             {
                 "type": "text",
@@ -234,13 +240,23 @@ Instructions:
                 "image_url": {"url": image_to_data_uri(p)},
             })
 
-        response = self.groq_client.chat.completions.create(
-            model=self.vision_model,
-            messages=[{"role": "user", "content": content}],
-            temperature=0,
-            max_completion_tokens=900,
-        )
-        return response.choices[0].message.content.strip()
+        try:
+            response = self.groq_client.chat.completions.create(
+                model=self.vision_model,
+                messages=[{"role": "user", "content": content}],
+                temperature=0,
+                max_completion_tokens=900,
+            )
+            return response.choices[0].message.content.strip()
+        except Exception as e:
+            logger.warning(f"Vision inference failed ({e}); gracefully falling back to text LLM.")
+            return self.text_rag_chain.invoke(
+                {
+                    "context": context,
+                    "question": question,
+                    "chat_history_block": chat_history_block,
+                }
+            )
 
     @traceable(name="multimodal_rag_pipeline", run_type="chain")
     def query(
@@ -292,7 +308,7 @@ Instructions:
             if doc.metadata.get("modality") == "visual":
                 raw_path = doc.metadata.get("image_path")
                 resolved = resolve_image_path(raw_path)
-                if resolved:
+                if resolved and resolved not in image_paths:
                     image_paths.append(resolved)
 
         # Dynamic multimodal routing

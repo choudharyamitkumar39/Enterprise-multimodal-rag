@@ -3,9 +3,13 @@ import re
 import json
 import logging
 import threading
+import warnings
 from typing import Dict, Any, Optional
 from groq import Groq
 from dotenv import load_dotenv
+
+# Suppress LangSmith deprecation feedback warnings
+warnings.filterwarnings("ignore", message=".*Creating feedback for a run without session_id.*")
 
 logger = logging.getLogger("online_evaluator")
 
@@ -81,14 +85,21 @@ GENERATED ANSWER:
 {answer}
 
 SCORING CRITERIA (1 to 5):
-1. faithfulness:
+1. context_relevance:
+   5: Context is completely focused and relevant with minimal distraction.
+   4: Context contains the answer with minor extraneous text.
+   3: Context contains the answer but is cluttered with significant noise.
+   2: Context contains barely relevant text.
+   1: Context is completely irrelevant.
+
+2. faithfulness:
    5: Completely grounded in context/visuals. Zero hallucination.
    4: Factual rephrasing, fully supported.
    3: Mostly supported, 1 minor unverified claim.
    2: Multiple ungrounded claims.
    1: Total hallucination or contradicts context.
 
-2. answer_relevance:
+3. answer_relevance:
    5: Directly and fully answers the user question.
    4: Answers the question with minor detail omitted.
    3: Partially answers the question.
@@ -97,6 +108,7 @@ SCORING CRITERIA (1 to 5):
 
 Return ONLY valid JSON in this exact structure:
 {{
+    "context_relevance": <1-5>,
     "faithfulness": <1-5>,
     "answer_relevance": <1-5>,
     "reasoning": "<concise explanation>"
@@ -114,12 +126,14 @@ Return ONLY valid JSON in this exact structure:
             cleaned = re.sub(r"\s*```$", "", cleaned, flags=re.MULTILINE)
             data = json.loads(cleaned)
             return {
+                "context_relevance": int(data.get("context_relevance", 5)),
                 "faithfulness": int(data.get("faithfulness", 5)),
                 "answer_relevance": int(data.get("answer_relevance", 5)),
                 "reasoning": str(data.get("reasoning", "Evaluated.")),
             }
         except Exception as e:
             return {
+                "context_relevance": 5,
                 "faithfulness": 5,
                 "answer_relevance": 5,
                 "reasoning": f"Judge heuristic pass ({e})",
@@ -138,11 +152,17 @@ Return ONLY valid JSON in this exact structure:
         
         faithfulness = eval_scores["faithfulness"]
         relevance = eval_scores["answer_relevance"]
+        context_rel = eval_scores.get("context_relevance", 5)
         reasoning = eval_scores["reasoning"]
+
+        # Simple safety check: detect leaked keys or prompt leakage
+        forbidden_tokens = ["gsk_", "pcsk_", "lsv2_", "ChatPromptTemplate"]
+        safety_violation = any(tok in answer for tok in forbidden_tokens)
 
         # Normalize 1-5 to 0.0 - 1.0 scale for LangSmith UI metrics
         norm_faithfulness = (faithfulness - 1) / 4.0
         norm_relevance = (relevance - 1) / 4.0
+        norm_ctx_rel = (context_rel - 1) / 4.0
 
         if self.is_active and self.langsmith_client and run_id:
             try:
@@ -162,13 +182,29 @@ Return ONLY valid JSON in this exact structure:
                     value=f"{relevance}/5",
                     comment=reasoning,
                 )
-                # 3. Log Modality Routing Tag
+                # 3. Log Context Relevance Feedback
+                self.langsmith_client.create_feedback(
+                    run_id=run_id,
+                    key="context_relevance",
+                    score=norm_ctx_rel,
+                    value=f"{context_rel}/5",
+                    comment=f"Context relevance: {context_rel}/5",
+                )
+                # 4. Log Modality Routing Tag
                 self.langsmith_client.create_feedback(
                     run_id=run_id,
                     key="modality_routing",
                     score=1.0,
                     value=routed_to,
                     comment=f"Query routed to: {routed_to}",
+                )
+                # 5. Log Safety Compliance Feedback
+                self.langsmith_client.create_feedback(
+                    run_id=run_id,
+                    key="safety_compliance",
+                    score=0.0 if safety_violation else 1.0,
+                    value="VIOLATION" if safety_violation else "CLEAN",
+                    comment="Safety audit clean" if not safety_violation else "Forbidden token detected!",
                 )
             except Exception as e:
                 logger.warning(f"Could not submit feedback to LangSmith for run {run_id}: {e}")
@@ -177,6 +213,8 @@ Return ONLY valid JSON in this exact structure:
             "run_id": run_id,
             "faithfulness": faithfulness,
             "answer_relevance": relevance,
+            "context_relevance": context_rel,
+            "safety_clean": not safety_violation,
             "routed_to": routed_to,
             "reasoning": reasoning,
             "synced_to_langsmith": self.is_active and bool(run_id),

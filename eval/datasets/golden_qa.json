@@ -1,0 +1,143 @@
+[
+  {
+    "id": "Q1_TEXT_HQ",
+    "category": "Text",
+    "question": "What does NovaCore Systems do and where is the company headquartered?",
+    "ground_truth": "NovaCore Systems Ltd. develops industrial AI gateways, computer-vision appliances, and connected sensor hubs for manufacturing, logistics, and energy companies. The company is headquartered in Singapore.",
+    "expected_pages": [1, 2],
+    "expected_modalities": ["text"],
+    "expected_visual_routing": false,
+    "key_facts": ["industrial AI", "Singapore"],
+    "facets": [
+      "Core business / what the company does (industrial AI / sensor hubs)",
+      "Headquarters location (Singapore)"
+    ],
+    "ideal_context_keywords": ["NovaCore Systems Ltd", "Singapore", "industrial AI"]
+  },
+  {
+    "id": "Q2_TEXT_FINANCIALS",
+    "category": "Text",
+    "question": "What was NovaCore's total revenue, operating margin, and employee headcount in FY2026?",
+    "ground_truth": "In FY2026, NovaCore achieved total revenue of $132.0 million (USD 132.0M), an operating margin of 18.4%, and ended the year with 1,480 employees.",
+    "expected_pages": [1, 2, 3],
+    "expected_modalities": ["text", "table"],
+    "expected_visual_routing": false,
+    "key_facts": ["132.0", "18.4%", "1,480"],
+    "facets": [
+      "Total revenue ($132.0M)",
+      "Operating margin (18.4%)",
+      "Employee headcount (1,480)"
+    ],
+    "ideal_context_keywords": ["132.0", "1,480", "operating margin"]
+  },
+  {
+    "id": "Q3_TABLE_REGIONAL",
+    "category": "Table",
+    "question": "Which region had the highest year-over-year revenue growth, and which region had the highest customer satisfaction score (CSAT)?",
+    "ground_truth": "Europe had the highest year-over-year regional revenue growth at 31% (reaching $41.2M), while Asia Pacific recorded the highest customer satisfaction score (CSAT) at 4.8/5.",
+    "expected_pages": [4],
+    "expected_modalities": ["table"],
+    "expected_visual_routing": false,
+    "key_facts": ["Europe", "31%", "Asia Pacific", "4.8"],
+    "facets": [
+      "Highest growth region (Europe at 31%)",
+      "Highest CSAT region (Asia Pacific at 4.8/5)"
+    ],
+    "ideal_context_keywords": ["Europe", "31%", "Asia Pacific", "4.8/5", "CSAT"]
+  },
+  {
+    "id": "Q4_TABLE_PRODUCTS",
+    "category": "Table",
+    "question": "Which product generated the highest gross margin, what was its unit shipment volume, and which product had the highest average selling price?",
+    "ground_truth": "AtlasEdge X1 generated the highest gross margin at 46% with 18,400 units shipped. VisionHub Pro commanded the highest average selling price at $4,600.",
+    "expected_pages": [5],
+    "expected_modalities": ["table"],
+    "expected_visual_routing": false,
+    "key_facts": ["AtlasEdge X1", "46%", "18,400", "VisionHub Pro", "4,600"],
+    "facets": [
+      "Highest gross margin product (AtlasEdge X1 at 46%)",
+      "Shipment volume for AtlasEdge X1 (18,400 units)",
+      "Highest average selling price product (VisionHub Pro at $4,600)"
+    ],
+    "ideal_context_keywords": ["AtlasEdge X1", "VisionHub Pro", "46%", "4,600"]
+  },
+  {
+    "id": "Q5_CHART_REVENUE",
+    "category": "Visual (Chart)",
+    "question": "According to the revenue line graph, which quarter achieved the highest revenue across the two-year period, and what was the approximate peak amount?",
+    "ground_truth": "According to the quarterly revenue graph, revenue peaked in Q4 2026 at approximately $37.5M to $37.8M, following consistent quarter-over-quarter growth across the two displayed years.",
+    "expected_pages": [3],
+    "expected_modalities": ["visual"],
+    "expected_visual_routing": true,
+    "key_facts": ["Q4 2026", "37"],
+    "facets": [
+      "Peak quarter identification (Q4 2026)",
+      "Approximate peak revenue figure (~$37.5M - $37.8M)"
+    ],
+    "ideal_context_keywords": ["Quarterly revenue", "Q4", "2026", "peak"]
+  },
+  {
+    "id": "Q6_DIAGRAM_SUPPLY_CHAIN",
+    "category": "Visual (Diagram)",
+    "question": "According to the supply-chain diagram, where is the critical quality-control point located, and what three mandatory tests must every batch pass before regional distribution?",
+    "ground_truth": "According to the supply-chain flow diagram, the critical quality-control point is the Quality Lab located in Singapore. Every production batch must pass thermal, network, and firmware validation tests before export to regional distribution hubs.",
+    "expected_pages": [6],
+    "expected_modalities": ["visual", "text"],
+    "expected_visual_routing": true,
+    "key_facts": ["Quality Lab", "Singapore", "thermal", "network", "firmware"],
+    "facets": [
+      "Location of critical quality control point (Quality Lab in Singapore)",
+      "Three mandatory validation tests (thermal, network, and firmware)"
+    ],
+    "ideal_context_keywords": ["Quality Lab", "Singapore", "thermal", "firmware", "distribution"]
+  },
+  {
+    "id": "Q7_CHART_SUPPORT",
+    "category": "Visual (Chart)",
+    "question": "Based on the customer support resolution chart, what was the average resolution time in January compared to August 2026, and what was the overall trend?",
+    "ground_truth": "Average support resolution time declined steadily from 14.2 hours in January 2026 down to 8.1 hours in August 2026, reflecting continuous efficiency improvements and meeting the sub-9-hour corporate SLA target.",
+    "expected_pages": [7],
+    "expected_modalities": ["visual", "text"],
+    "expected_visual_routing": true,
+    "key_facts": ["14.2", "8.1", "January", "August"],
+    "facets": [
+      "January resolution time (14.2 hours)",
+      "August resolution time (8.1 hours)",
+      "Overall trend description (steady downward trend / improvement)"
+    ],
+    "ideal_context_keywords": ["Average support resolution", "14.2", "8.1", "January", "August"]
+  },
+  {
+    "id": "Q8_CHART_ELECTRICITY",
+    "category": "Visual (Chart)",
+    "question": "What is the electricity mix at the Penang Smart Assembly Facility according to the sustainability pie chart?",
+    "ground_truth": "According to the sustainability electricity mix chart, the Penang facility is powered by 51% grid electricity, 34% on-site solar, and 15% purchased renewables.",
+    "expected_pages": [8],
+    "expected_modalities": ["visual"],
+    "expected_visual_routing": true,
+    "key_facts": ["51%", "34%", "15%", "solar", "grid"],
+    "facets": [
+      "Solar electricity share (34%)",
+      "Grid electricity share (51%)",
+      "Purchased renewables share (15%)"
+    ],
+    "ideal_context_keywords": ["Penang", "solar", "grid", "electricity mix", "34%"]
+  },
+  {
+    "id": "Q9_CROSS_MODAL_SUMMARY",
+    "category": "Cross-Modal",
+    "question": "Provide a comprehensive FY2026 operational summary that includes total company revenue, the highest-margin product, the fastest-growing geographical region, and the solar energy percentage at the Penang facility.",
+    "ground_truth": "In FY2026, NovaCore reached $132.0M in revenue (+35.4% YoY). AtlasEdge X1 was the highest-margin product at 46% gross margin (18,400 units). Europe was the fastest-growing region with 31% YoY growth ($41.2M revenue). At the Penang assembly facility, solar power generated 34% of the total electricity mix.",
+    "expected_pages": [1, 2, 3, 4, 5, 8],
+    "expected_modalities": ["text", "table", "visual"],
+    "expected_visual_routing": true,
+    "key_facts": ["132.0", "AtlasEdge X1", "46%", "Europe", "31%", "34%"],
+    "facets": [
+      "Total revenue ($132.0M)",
+      "Highest margin product (AtlasEdge X1 at 46%)",
+      "Fastest growing region (Europe at 31%)",
+      "Penang solar energy contribution (34%)"
+    ],
+    "ideal_context_keywords": ["132.0", "AtlasEdge X1", "Europe", "31%", "solar", "Penang"]
+  }
+]
