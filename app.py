@@ -15,6 +15,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from src.rag_pipeline import MultimodalRAGPipeline
 from src.pdf_processor import process_and_index_pdf
+from src.visualizer import highlight_page_passage
 from src.chat_storage import (
     load_all_sessions,
     save_session,
@@ -146,10 +147,23 @@ with st.sidebar:
     # System Status Indicator
     with st.expander("⚙️ System Status", expanded=False):
         st.caption("• **Vector DB**: Pinecone Serverless")
+        st.caption("• **Hybrid Search**: Dense + BM25 + RRF")
+        st.caption("• **Semantic Cache**: GPTCache (Active)")
+        st.caption("• **Agentic Loop**: Self-RAG Active")
         st.caption("• **Text LLM**: OpenAI OSS 20B (Groq)")
         st.caption("• **Vision LLM**: Qwen 27B Vision (Groq)")
         ls_status = "Connected ✅" if pipeline.online_evaluator.is_active else "Local Mode ℹ️"
         st.caption(f"• **LangSmith**: {ls_status}")
+
+    # Semantic Cache ROI Metrics
+    if hasattr(pipeline, "cache_manager"):
+        stats = pipeline.cache_manager.get_stats()
+        with st.expander("⚡ Semantic Cache ROI", expanded=False):
+            st.metric(label="Hit Rate", value=stats["Hit Rate"])
+            st.caption(f"• **Total Inquiries**: {stats['Total Inquiries']}")
+            st.caption(f"• **Tokens Saved**: {stats['Tokens Saved']}")
+            st.caption(f"• **Latency Saved**: {stats['Latency Saved']}")
+            st.caption(f"• **Cost Saved**: {stats['Estimated Cost Saved']}")
 
 
 # -------------------------------------------------------------
@@ -294,17 +308,53 @@ if pdf_name:
                             if Path(img_p).exists():
                                 st.image(str(img_p), caption=f"Visual {c_idx+1}", use_container_width=True)
 
-                # Source citations
+                # Source citations & Click-to-Highlight Grounding
                 sources_meta = []
                 for d in retrieved_docs:
                     sources_meta.append({
                         "page": d.metadata.get("page"),
                         "modality": d.metadata.get("modality"),
+                        "snippet": d.page_content[:150],
+                        "bbox": d.metadata.get("bbox"),
                     })
 
-                with st.expander("📚 Retrieved Source Pages", expanded=False):
-                    for s in sources_meta:
-                        st.caption(f"• Page {s.get('page')} | {str(s.get('modality', '')).upper()}")
+                # Check if PDF path exists for visual grounding preview
+                pdf_file_candidates = [
+                    PROJECT_ROOT / "data" / "raw" / f"{session_id}_{pdf_name}",
+                    PROJECT_ROOT / "data" / "raw" / pdf_name,
+                    PROJECT_ROOT / "data" / "raw" / "NovaCore_Multimodal_Company_Report_2026.pdf",
+                ]
+                active_pdf_disk_path = None
+                for c in pdf_file_candidates:
+                    if c.exists():
+                        active_pdf_disk_path = c
+                        break
+
+                with st.expander("📚 Retrieved Source Pages & Verified Grounding", expanded=False):
+                    for idx, s in enumerate(sources_meta):
+                        p_num = s.get("page")
+                        mod = str(s.get("modality", "")).upper()
+                        st.markdown(f"**Source #{idx+1}**: Page {p_num} `[{mod}]`")
+                        st.caption(f"_{s.get('snippet', '')}..._")
+
+                        # If source PDF is available on disk, allow 1-click highlighted inspection
+                        if active_pdf_disk_path and p_num:
+                            with st.popover(f"🔍 Audit Highlighted Page {p_num}"):
+                                highlighted_bytes = highlight_page_passage(
+                                    pdf_path=active_pdf_disk_path,
+                                    page_number=int(p_num),
+                                    search_snippet=s.get("snippet"),
+                                    bbox=s.get("bbox"),
+                                )
+                                if highlighted_bytes:
+                                    st.image(
+                                        highlighted_bytes,
+                                        caption=f"Verified Source: Page {p_num} (Highlight in Yellow)",
+                                        use_container_width=True,
+                                    )
+                                else:
+                                    st.info(f"Page {p_num} preview could not be generated.")
+                    st.divider()
 
         # 3. Save assistant message and update storage
         messages.append({

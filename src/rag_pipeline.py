@@ -32,12 +32,18 @@ except ImportError:
     def get_current_run_tree():
         return None
 
-# Import Online Evaluator
+# Import Online Evaluator, Cache Manager, Hybrid Retriever, and Agentic Router
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 try:
     from .online_evaluator import LangSmithOnlineEvaluator
+    from .cache_manager import SemanticCacheManager
+    from .hybrid_retriever import HybridRerankRetriever
+    from .agentic_router import AgenticSelfRAG
 except (ImportError, ValueError):
     from online_evaluator import LangSmithOnlineEvaluator
+    from cache_manager import SemanticCacheManager
+    from hybrid_retriever import HybridRerankRetriever
+    from agentic_router import AgenticSelfRAG
 
 
 def find_env_file():
@@ -109,7 +115,7 @@ class MultimodalRAGPipeline:
         text_model: str = "openai/gpt-oss-20b",
         vision_model: str = "qwen/qwen3.8-27b",
         embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2",
-        index_name: str = "multimodal-rag-index",
+        index_name: Optional[str] = None,
         namespace: str = "fy2026-demo",
         top_k: int = 5,
         enable_online_eval: bool = True,
@@ -128,7 +134,10 @@ class MultimodalRAGPipeline:
         self.text_model = text_model
         self.vision_model = vision_model
         self.embedding_model = embedding_model
-        self.index_name = index_name
+
+        # Auto-detect or resolve Pinecone index
+        env_index = os.getenv("PINECONE_INDEX_NAME")
+        self.index_name = index_name or env_index or "novacore-multimodal-rag"
         self.namespace = namespace
         self.top_k = top_k
         self.enable_online_eval = enable_online_eval
@@ -192,6 +201,24 @@ ANSWER:
         self.online_evaluator = LangSmithOnlineEvaluator(
             judge_model=self.text_model,
             groq_client=self.groq_client,
+        )
+
+        # 1. GPTCache Semantic Cache Manager
+        self.cache_manager = SemanticCacheManager(
+            embedding_function=self.embeddings,
+            similarity_threshold=0.88,
+        )
+
+        # 2. Hybrid Retriever with Cross-Encoder (Dense + BM25 + RRF)
+        self.hybrid_retriever = HybridRerankRetriever(
+            vectorstore=self.vectorstore,
+            rrf_k=60,
+        )
+
+        # 3. Agentic Self-RAG (Query rewrite, sufficiency grader, self-correction)
+        self.agentic_rag = AgenticSelfRAG(
+            groq_client=self.groq_client,
+            model=self.text_model,
         )
 
     @traceable(name="multimodal_vision_inference", run_type="llm")
@@ -266,31 +293,31 @@ Instructions:
         namespace: Optional[str] = None,
         chat_history: Optional[List[Dict[str, str]]] = None,
         online_eval: Optional[bool] = None,
+        enable_cache: bool = True,
+        enable_agentic_loop: bool = True,
     ) -> Dict[str, Any]:
         """
-        Executes a full multimodal RAG query, records LangSmith traces,
-        and automatically triggers real-time online evaluation.
+        Executes an advanced Enterprise RAG query:
+        1. Checks GPTCache Semantic Cache (returns in <50ms on semantic hits)
+        2. Agentic Query Optimization (rewrites conversational queries)
+        3. Hybrid Retrieval (Pinecone Dense + Sparse BM25 + Reciprocal Rank Fusion)
+        4. Self-Corrective Retrieval Grader (re-searches if initial retrieval is insufficient)
+        5. Multimodal Dynamic Routing (Text LLM vs Vision VLM)
+        6. Real-time LangSmith Observability & Online Evaluation
+        7. Cache Population on cache misses
         """
-        # Capture current LangSmith run ID if tracing
-        run_tree = get_current_run_tree()
-        run_id = str(run_tree.id) if run_tree else None
-
         effective_k = top_k or self.top_k
         target_namespace = namespace or self.namespace
 
-        # Use target namespace retriever
-        if target_namespace != self.namespace or effective_k != self.top_k:
-            vs = PineconeVectorStore(
-                index_name=self.index_name,
-                embedding=self.embeddings,
-                namespace=target_namespace,
-            )
-            retriever = vs.as_retriever(search_kwargs={"k": effective_k})
-            retrieved_docs = retriever.invoke(question)
-        else:
-            retrieved_docs = self.retriever.invoke(question)
+        # --- STEP 1: GPTCache Semantic Cache Check ---
+        if enable_cache and hasattr(self, "cache_manager"):
+            cached_res = self.cache_manager.check_cache(question, namespace=target_namespace)
+            if cached_res:
+                return cached_res
 
-        context = format_context(retrieved_docs)
+        # Capture current LangSmith run ID if tracing
+        run_tree = get_current_run_tree()
+        run_id = str(run_tree.id) if run_tree else None
 
         # Format conversation history
         chat_history_block = ""
@@ -302,6 +329,48 @@ Instructions:
                 formatted.append(f"{role}: {m.get('content', '')}")
             chat_history_block = "PREVIOUS CONVERSATION:\n" + "\n".join(formatted) + "\n\n"
 
+        # --- STEP 2: Agentic Query Optimization ---
+        search_query = question
+        if enable_agentic_loop and hasattr(self, "agentic_rag") and chat_history:
+            search_query = self.agentic_rag.rewrite_query_for_retrieval(question, chat_history_block)
+
+        # --- STEP 3: Hybrid Retrieval (Dense + BM25 + RRF) ---
+        if hasattr(self, "hybrid_retriever"):
+            retrieved_docs = self.hybrid_retriever.hybrid_search(
+                query=search_query,
+                k=effective_k,
+                namespace=target_namespace,
+            )
+        else:
+            if target_namespace != self.namespace or effective_k != self.top_k:
+                vs = PineconeVectorStore(
+                    index_name=self.index_name,
+                    embedding=self.embeddings,
+                    namespace=target_namespace,
+                )
+                retriever = vs.as_retriever(search_kwargs={"k": effective_k})
+                retrieved_docs = retriever.invoke(search_query)
+            else:
+                retrieved_docs = self.retriever.invoke(search_query)
+
+        context = format_context(retrieved_docs)
+
+        # --- STEP 4: Self-Corrective Retrieval Grader ---
+        if enable_agentic_loop and hasattr(self, "agentic_rag"):
+            grade = self.agentic_rag.grade_retrieval_sufficiency(question, context)
+            if not grade["sufficient"]:
+                # Self-correction: Reformulate and retry retrieval once
+                alt_query = self.agentic_rag.reformulate_query_on_failure(search_query, grade["reasoning"])
+                if alt_query != search_query and hasattr(self, "hybrid_retriever"):
+                    retry_docs = self.hybrid_retriever.hybrid_search(
+                        query=alt_query,
+                        k=effective_k,
+                        namespace=target_namespace,
+                    )
+                    if retry_docs:
+                        retrieved_docs = retry_docs
+                        context = format_context(retrieved_docs)
+
         # Check for visual modality
         image_paths = []
         for doc in retrieved_docs:
@@ -311,7 +380,7 @@ Instructions:
                 if resolved and resolved not in image_paths:
                     image_paths.append(resolved)
 
-        # Dynamic multimodal routing
+        # --- STEP 5: Dynamic Multimodal Generation ---
         if image_paths:
             routed_to = "visual"
             answer = self.answer_with_vision(
@@ -330,7 +399,7 @@ Instructions:
                 }
             )
 
-        # Online evaluation trigger (Async by default)
+        # --- STEP 6: Online Evaluation (LangSmith) ---
         do_eval = self.enable_online_eval if online_eval is None else online_eval
         eval_dispatch = None
         if do_eval and self.online_evaluator:
@@ -343,7 +412,7 @@ Instructions:
                 background=True,
             )
 
-        return {
+        result_payload = {
             "question": question,
             "answer": answer,
             "retrieved_docs": retrieved_docs,
@@ -354,4 +423,15 @@ Instructions:
             "retrieved_pages": [int(doc.metadata.get("page", 0)) for doc in retrieved_docs],
             "run_id": run_id,
             "online_eval": eval_dispatch,
+            "from_cache": False,
         }
+
+        # --- STEP 7: Populate GPTCache ---
+        if enable_cache and hasattr(self, "cache_manager"):
+            self.cache_manager.store_cache(
+                query=question,
+                response_dict=result_payload,
+                namespace=target_namespace,
+            )
+
+        return result_payload

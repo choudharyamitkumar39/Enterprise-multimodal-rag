@@ -65,7 +65,7 @@ Keep the description concise, factual, and accurate.
 def process_and_index_pdf(
     pdf_path: Path,
     namespace: str,
-    index_name: str = "multimodal-rag-index",
+    index_name: Optional[str] = None,
     vision_model: str = "qwen/qwen3.8-27b",
     embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2",
     progress_callback: Optional[Callable[[float, str], None]] = None,
@@ -76,6 +76,7 @@ def process_and_index_pdf(
     
     Returns the total number of LangChain documents indexed.
     """
+    effective_index = index_name or os.getenv("PINECONE_INDEX_NAME") or "novacore-multimodal-rag"
     pdf_path = Path(pdf_path)
     if not pdf_path.exists():
         raise FileNotFoundError(f"PDF not found at {pdf_path}")
@@ -106,19 +107,25 @@ def process_and_index_pdf(
         if progress_callback:
             progress_callback(page_progress, f"Extracting page {page_num} of {total_pages} (text, tables, visuals)...")
 
-        # 1. Text
-        text = page.get_text("text").strip()
-        if text:
-            documents.append(
-                Document(
-                    page_content=text,
-                    metadata={
-                        "page": page_num,
-                        "modality": "text",
-                        "source": pdf_path.name,
-                    },
+        # 1. Text (Extract block-level text with bounding box coordinates for highlight grounding)
+        text_blocks = page.get_text("blocks")
+        for b_idx, block in enumerate(text_blocks):
+            # block format: (x0, y0, x1, y1, text, block_no, block_type)
+            if len(block) >= 5 and block[4].strip():
+                block_text = block[4].strip()
+                bbox = [round(float(coord), 1) for coord in block[:4]]
+                documents.append(
+                    Document(
+                        page_content=block_text,
+                        metadata={
+                            "page": page_num,
+                            "modality": "text",
+                            "source": pdf_path.name,
+                            "bbox": bbox,
+                            "block_id": b_idx,
+                        },
+                    )
                 )
-            )
 
         # 2. Tables
         try:
@@ -126,6 +133,7 @@ def process_and_index_pdf(
             for tab_num, table in enumerate(tabs, start=1):
                 df = table.to_pandas()
                 if not df.empty:
+                    tab_bbox = [round(float(c), 1) for c in table.bbox] if hasattr(table, "bbox") else []
                     documents.append(
                         Document(
                             page_content=df.to_markdown(index=False),
@@ -134,6 +142,7 @@ def process_and_index_pdf(
                                 "modality": "table",
                                 "table_number": tab_num,
                                 "source": pdf_path.name,
+                                "bbox": tab_bbox,
                             },
                         )
                     )
@@ -192,7 +201,7 @@ def process_and_index_pdf(
     # Embeddings & Pinecone Upload
     embeddings = HuggingFaceEmbeddings(model_name=embedding_model)
     vectorstore = PineconeVectorStore(
-        index_name=index_name,
+        index_name=effective_index,
         embedding=embeddings,
         namespace=namespace,
     )
