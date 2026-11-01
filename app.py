@@ -89,8 +89,8 @@ if "active_session_id" not in st.session_state:
     else:
         # Create initial default session
         new_id = create_new_session(
-            title="NovaCore FY2026 Report",
-            pdf_name="NovaCore_Multimodal_Company_Report_2026.pdf",
+            title="Sample Report",
+            pdf_name="Sample_Report.pdf",
             namespace="fy2026-demo",
         )
         st.session_state.active_session_id = new_id
@@ -225,9 +225,9 @@ if not pdf_name:
 
     with col_sample:
         st.markdown("**Or test instantly with a pre-indexed report:**")
-        if st.button("⚡ Use NovaCore FY2026 Sample Report", use_container_width=True):
-            session["pdf_name"] = "NovaCore_Multimodal_Company_Report_2026.pdf"
-            session["title"] = "NovaCore Report 2026"
+        if st.button("⚡ Use Sample Demo Report", use_container_width=True):
+            session["pdf_name"] = "Sample_Report.pdf"
+            session["title"] = "Sample Report"
             session["namespace"] = "fy2026-demo"
             save_session(session_id, session)
             st.rerun()

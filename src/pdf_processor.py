@@ -65,7 +65,7 @@ Keep the description concise, factual, and accurate.
 def process_and_index_pdf(
     pdf_path: Path,
     namespace: str,
-    index_name: str = "novacore-multimodal-rag",
+    index_name: str = "multimodal-rag-index",
     vision_model: str = "qwen/qwen3.8-27b",
     embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2",
     progress_callback: Optional[Callable[[float, str], None]] = None,

@@ -65,11 +65,11 @@ def resolve_image_path(raw_path):
     root_dir = Path(__file__).resolve().parent.parent
     candidates = [
         root_dir / "data" / "extracted_images" / filename,
-        root_dir / "novacore_extracted_images" / filename,
+        root_dir / "sample_extracted_images" / filename,
         Path("data/extracted_images") / filename,
         Path("../data/extracted_images") / filename,
-        Path("novacore_extracted_images") / filename,
-        Path("../novacore_extracted_images") / filename,
+        Path("sample_extracted_images") / filename,
+        Path("../sample_extracted_images") / filename,
     ]
     for c in candidates:
         if c.exists():
@@ -109,7 +109,7 @@ class MultimodalRAGPipeline:
         text_model: str = "openai/gpt-oss-20b",
         vision_model: str = "qwen/qwen3.8-27b",
         embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2",
-        index_name: str = "novacore-multimodal-rag",
+        index_name: str = "multimodal-rag-index",
         namespace: str = "fy2026-demo",
         top_k: int = 5,
         enable_online_eval: bool = True,

@@ -39,7 +39,7 @@ Multimodal RAG/
 │   └── evaluation_report.json            # Consolidated JSON benchmark results
 ├── docs/                                 # Conceptual slides & presentations
 ├── notebooks/
-│   ├── Build_Multimodal_RAG_NovaCore.ipynb # Ingestion, vector indexing & demo notebook
+│   ├── Build_Multimodal_RAG.ipynb         # Ingestion, vector indexing & demo notebook
 │   ├── Evaluate_Multimodal_RAG.ipynb     # Offline benchmark & LangSmith online evaluation
 │   └── Comprehensive_Evaluation.ipynb    # Complete 5-tier evaluation walkthrough & charts
 ├── scripts/
@@ -249,7 +249,7 @@ streamlit run app.py
 ### 3. Ingestion & RAG Pipeline Demo (Jupyter)
 Open and run all cells in:
 ```text
-notebooks/Build_Multimodal_RAG_NovaCore.ipynb
+notebooks/Build_Multimodal_RAG.ipynb
 ```
 
 ### 4. Run Offline Evaluation & Benchmarks
