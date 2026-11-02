@@ -40,7 +40,6 @@ Multimodal RAG/
 ├── docs/                                 # Conceptual slides & presentations
 ├── notebooks/
 │   ├── Build_Multimodal_RAG.ipynb         # Ingestion, vector indexing & demo notebook
-│   ├── Evaluate_Multimodal_RAG.ipynb     # Offline benchmark & LangSmith online evaluation
 │   └── Comprehensive_Evaluation.ipynb    # Complete 5-tier evaluation walkthrough & charts
 ├── scripts/
 │   └── demo_online_evaluation.py         # CLI demo for live production tracing & online feedback
@@ -49,7 +48,6 @@ Multimodal RAG/
     ├── agentic_router.py                 # Self-Corrective RAG (Query rewrite & retrieval grader)
     ├── cache_manager.py                  # Semantic Caching with GPTCache (<50ms hits, $0 cost)
     ├── chat_storage.py                   # Chat session storage & history manager
-    ├── evaluator.py                      # Baseline RAG Triad Evaluator
     ├── hybrid_retriever.py               # Hybrid Search (Dense + BM25) & Reciprocal Rank Fusion
     ├── multi_doc_analyzer.py             # Multi-Document Cross-Analysis & Comparative Synthesis
     ├── online_evaluator.py               # LangSmith Online Evaluator (Async feedback hooks)
@@ -293,26 +291,18 @@ Open and run all cells in:
 notebooks/Build_Multimodal_RAG.ipynb
 ```
 
-### 4. Run Offline Evaluation & Benchmarks
-Execute the offline benchmark suite:
-* **Interactive Notebook**: Open [`notebooks/Evaluate_Multimodal_RAG.ipynb`](notebooks/Evaluate_Multimodal_RAG.ipynb).
-* **CLI Command**:
-  ```bash
-  python src/evaluator.py
-  ```
-
-### 5. Run Live Online Evaluation & LangSmith Demo
-Test live production queries with real-time feedback logging:
-```bash
-python scripts/demo_online_evaluation.py
-```
-
-### 6. Run the Enterprise 5-Tier Evaluation Suite
-Execute the complete enterprise evaluation suite across all levels with safety, adversarial and operational profiling:
+### 4. Run the Enterprise 5-Tier Evaluation Suite
+Execute the complete enterprise evaluation suite across all levels (Component Isolation, RAG Triad, Application Quality, and Safety & Operations):
 * **Interactive Notebook**: Open [`notebooks/Comprehensive_Evaluation.ipynb`](notebooks/Comprehensive_Evaluation.ipynb)
 * **Master CLI Suite**:
   ```bash
   python eval/run_full_suite.py
   ```
 Generates `eval/evaluation_report.json` and builds the production visualization dashboard at `assets/full_evaluation_suite.png`.
+
+### 5. Run Live Online Evaluation & LangSmith Demo
+Test live production queries with real-time feedback logging:
+```bash
+python scripts/demo_online_evaluation.py
+```
 

@@ -12,7 +12,6 @@ from typing import Optional, Dict, Any, Tuple
 import numpy as np
 
 from gptcache import cache
-from gptcache.manager import get_data_manager, VectorBase
 
 logger = logging.getLogger("cache_manager")
 

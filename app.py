@@ -1,11 +1,9 @@
 import os
 import sys
-import shutil
 from pathlib import Path
 from typing import Dict, Any, List
 
 import streamlit as st
-from PIL import Image
 from dotenv import load_dotenv
 
 # Ensure project root is in sys.path

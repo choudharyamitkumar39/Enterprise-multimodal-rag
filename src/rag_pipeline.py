@@ -75,11 +75,8 @@ def resolve_image_path(raw_path):
     root_dir = Path(__file__).resolve().parent.parent
     candidates = [
         root_dir / "data" / "extracted_images" / filename,
-        root_dir / "sample_extracted_images" / filename,
         Path("data/extracted_images") / filename,
         Path("../data/extracted_images") / filename,
-        Path("sample_extracted_images") / filename,
-        Path("../sample_extracted_images") / filename,
     ]
     for c in candidates:
         if c.exists():
