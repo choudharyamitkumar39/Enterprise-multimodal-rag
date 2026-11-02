@@ -76,6 +76,34 @@ def get_pipeline():
     return MultimodalRAGPipeline()
 
 
+def resolve_session_pdf_path(s_id: str, p_name: Optional[str]) -> Optional[Path]:
+    """Resolves the physical PDF path on disk for visual highlighting."""
+    raw_dir = PROJECT_ROOT / "data" / "raw"
+    if not raw_dir.exists():
+        return None
+    # 1. Match files beginning with session_id (e.g. 94337b46_Viva-leisure-report.pdf)
+    if s_id:
+        session_matches = list(raw_dir.glob(f"{s_id}_*"))
+        if session_matches:
+            return session_matches[0]
+    # 2. Match exact or prefixed with p_name
+    if p_name:
+        candidates = [
+            raw_dir / f"{s_id}_{p_name}",
+            raw_dir / p_name,
+            raw_dir / "NovaCore_Multimodal_Company_Report_2026.pdf",
+        ]
+        for c in candidates:
+            if c.exists():
+                return c
+    # 3. Fallback to NovaCore demo or any available PDF in data/raw
+    default_demo = raw_dir / "NovaCore_Multimodal_Company_Report_2026.pdf"
+    if default_demo.exists():
+        return default_demo
+    all_pdfs = list(raw_dir.glob("*.pdf"))
+    return all_pdfs[0] if all_pdfs else None
+
+
 pipeline = get_pipeline()
 
 # Session State Initialization
@@ -270,7 +298,7 @@ if not pdf_name:
 # CHAT DISPLAY & INPUT
 # -------------------------------------------------------------
 # Render conversation history
-for msg in messages:
+for msg_idx, msg in enumerate(messages):
     role = msg.get("role", "user")
     content = msg.get("content", "")
     with st.chat_message(role):
@@ -286,12 +314,45 @@ for msg in messages:
                     if Path(img_p).exists():
                         st.image(str(img_p), caption=f"Visual {c_idx+1}", use_container_width=True)
 
-        # Display sources
+        # Display sources & Click-to-Highlight Grounding
         sources = msg.get("sources", [])
         if sources:
-            with st.expander("📚 Retrieved Source Pages", expanded=False):
-                for s in sources:
-                    st.caption(f"• Page {s.get('page')} | {str(s.get('modality', '')).upper()}")
+            with st.expander("📚 Retrieved Source Pages & Verified Grounding", expanded=False):
+                active_pdf_path = resolve_session_pdf_path(session_id, pdf_name)
+                for idx, s in enumerate(sources):
+                    raw_p = s.get("page")
+                    if raw_p is None:
+                        continue
+                    try:
+                        p_num = int(float(raw_p))
+                    except (ValueError, TypeError):
+                        p_num = None
+
+                    mod = str(s.get("modality", "")).upper()
+                    doc_label = f"• **{s.get('doc_name')}** | " if s.get("doc_name") else ""
+                    st.markdown(f"{doc_label}**Source #{idx+1}**: Page {p_num if p_num else raw_p} `[{mod}]`")
+                    if s.get("snippet"):
+                        st.caption(f"_{s.get('snippet')}..._")
+
+                    if active_pdf_path and p_num:
+                        with st.popover(
+                            f"🔍 Audit Highlighted Page {p_num}",
+                            key=f"hist_audit_{msg_idx}_{idx}_{p_num}_{session_id}",
+                        ):
+                            highlighted_bytes = highlight_page_passage(
+                                pdf_path=active_pdf_path,
+                                page_number=p_num,
+                                search_snippet=s.get("snippet"),
+                                bbox=s.get("bbox"),
+                            )
+                            if highlighted_bytes:
+                                st.image(
+                                    highlighted_bytes,
+                                    caption=f"Verified Source: Page {p_num} (Highlight in Yellow)",
+                                    use_container_width=True,
+                                )
+                            else:
+                                st.info(f"Page {p_num} preview could not be generated.")
 
 # User chat input
 if pdf_name:
@@ -373,30 +434,29 @@ if pdf_name:
                     })
 
                 # Check if PDF path exists for visual grounding preview
-                pdf_file_candidates = [
-                    PROJECT_ROOT / "data" / "raw" / f"{session_id}_{pdf_name}",
-                    PROJECT_ROOT / "data" / "raw" / pdf_name,
-                    PROJECT_ROOT / "data" / "raw" / "NovaCore_Multimodal_Company_Report_2026.pdf",
-                ]
-                active_pdf_disk_path = None
-                for c in pdf_file_candidates:
-                    if c.exists():
-                        active_pdf_disk_path = c
-                        break
+                active_pdf_disk_path = resolve_session_pdf_path(session_id, pdf_name)
 
                 with st.expander("📚 Retrieved Source Pages & Verified Grounding", expanded=False):
                     for idx, s in enumerate(sources_meta):
-                        p_num = s.get("page")
+                        raw_p = s.get("page")
+                        try:
+                            p_num = int(float(raw_p)) if raw_p is not None else None
+                        except (ValueError, TypeError):
+                            p_num = None
                         mod = str(s.get("modality", "")).upper()
-                        st.markdown(f"**Source #{idx+1}**: Page {p_num} `[{mod}]`")
-                        st.caption(f"_{s.get('snippet', '')}..._")
+                        st.markdown(f"**Source #{idx+1}**: Page {p_num if p_num else raw_p} `[{mod}]`")
+                        if s.get("snippet"):
+                            st.caption(f"_{s.get('snippet', '')}..._")
 
                         # If source PDF is available on disk, allow 1-click highlighted inspection
                         if active_pdf_disk_path and p_num:
-                            with st.popover(f"🔍 Audit Highlighted Page {p_num}"):
+                            with st.popover(
+                                f"🔍 Audit Highlighted Page {p_num}",
+                                key=f"live_audit_{idx}_{p_num}_{session_id}",
+                            ):
                                 highlighted_bytes = highlight_page_passage(
                                     pdf_path=active_pdf_disk_path,
-                                    page_number=int(p_num),
+                                    page_number=p_num,
                                     search_snippet=s.get("snippet"),
                                     bbox=s.get("bbox"),
                                 )
